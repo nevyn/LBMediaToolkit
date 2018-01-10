@@ -1,9 +1,10 @@
 theme: Letters from Sweden, 2
 # [Fit] LBMediaToolkit
-## Diving into Apple low level
+## [Fit] Diving into Apple low level
 ## [Fit] media frameworks
+## PART 1
 ### @nevyn, @lookback
-#### Cocoaheads 2018-01-09
+#### Cocoaheads #87, 2018-01-09
 
 --- 
 
@@ -403,3 +404,111 @@ https://github.com/nevyn/LBMediaToolkit
 
 ---
 
+# [Fit] CoreVideo
+
+---
+
+![inline](Colors.png)
+
+---
+
+![inline](crcb.tiff)
+
+(Image credit: [Simon A. Eugster, wikipedia](https://en.wikipedia.org/wiki/YCbCr#/media/File:YCbCr-CbCr_Scaled_Y50.png))
+
+---
+
+YUV,  Y'CbCr,  Y'PbPr, 422, 420, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+
+![inline](Colors2.png)
+
+---
+
+![inline](Colors3.png)
+
+---
+
+![inline](stride error.png)
+
+---
+
+# CVPixelBuffer
+
+* "Same" as CVImageBuffer
+* Backing store for CGBitmapContext
+
+---
+
+# CVPixelBufferPool
+
+```objc
+OSStatus poolErr = CVPixelBufferPoolCreate(NULL,
+	NULL, // pool attrs
+	(__bridge CFDictionaryRef)(@{
+		(id)kCVPixelBufferPixelFormatTypeKey: @(...),
+		(id)kCVPixelBufferWidthKey: @(layerSize.width),
+		(id)kCVPixelBufferHeightKey: @(layerSize.height),
+	}),
+	&_pixelBufferPool
+);
+
+//... later
+
+CVPixelBufferPoolCreatePixelBuffer(NULL, _pixelBufferPool, buffer);
+
+```
+
+---
+
+# Pixels into CMSampleBuffer
+
+```objc
+CMFormatDescriptionRef formatDescription;
+CMSampleBufferRef sampleBuffer;
+
+CMVideoFormatDescriptionCreateForImageBuffer(NULL, pixelBuffer, &formatDescription);
+
+CMSampleBufferCreateForImageBuffer(
+	NULL,
+	pixelBuffer,
+	true, NULL, NULL, // data is ready
+	formatDescription,
+	&timing,
+	&sampleBuffer
+);
+```
+
+---
+
+# Muxing
+
+---
+
+# AVComposition
+
+---
+
+# VideoToolkit
+
+---
+
+# LBIFFSerializer
+
+---
+
+# LBSampleBufferFileSerialization
+
+---
+
+# Memory and thread management
+
+---
+
+# Code and presentation notes
+
+https://github.com/nevyn/LBMediaToolkit
+
+---
+
+# [fit] Thank you!
+## @nevyn

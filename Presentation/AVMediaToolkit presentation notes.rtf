@@ -1,0 +1,272 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1561\cocoasubrtf200
+{\fonttbl\f0\fnil\fcharset0 HelveticaNeue-Bold;\f1\fnil\fcharset0 HelveticaNeue;\f2\fnil\fcharset0 HelveticaNeue-Italic;
+\f3\fnil\fcharset0 Menlo-Regular;}
+{\colortbl;\red255\green255\blue255;\red53\green53\blue53;\red220\green161\blue13;}
+{\*\expandedcolortbl;;\cssrgb\c27059\c27059\c27059;\cssrgb\c89412\c68627\c3922;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid2\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li1440\lin1440 }{\listname ;}\listid1}
+{\list\listtemplateid2\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid101\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid2}
+{\list\listtemplateid3\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid201\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid3}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}{\listoverride\listid2\listoverridecount0\ls2}{\listoverride\listid3\listoverridecount0\ls3}}
+\paperw11900\paperh16840\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\deftab560
+\pard\pardeftab560\slleading20\partightenfactor0
+
+\f0\b\fs24 \cf2 LBMediaToolkit presentation
+\f1\b0 \
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf2 \
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 Hey there, I'm Nevyn Bengtsson, and I'm here to talk to you about diving into Apple's low level media frameworks.\
+\
+I haven't presented at Cocoaheads in over three years, so I'm really excited to be here again! Many thanks to Edward and Alek for getting me on stage again. \
+\
+I'm the co-founder of the UX research platform startup Lookback. It's a set of tools that let you record and live stream the screen, camera and microphone of any device that you write software for, so that you can talk to your users in real-time, whether in-person or remote over the internet, understand their experiences, and thus create more empathetic software.\
+\
+With all the live-streaming, file-recording, media-wrangling code I've written at Lookback in the past four years, and all the audio mangling I did at Spotify before then, I've messed with a lot media code. Therefore, I'd like to really get into the hard-core details of dealing with audio and video on iOS with you, so strap in for a ride!\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf2 \
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 The gist is this: Apple has some really amazing media frameworks. The APIs tend to be verbose, but given the enormous complexities involved when dealing with audio and video in different formats, they're surprisingly well designed, and allow you to take a high-level approach, a mid-level approach or low-level approach for almost any task, depending on the complexity you're aiming for.\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf2 \
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 Let's dive right in, and illustrate these beautiful APIs by looking at 
+\f0\b camera capture APIs
+\f1\b0  in iOS. When I started out writing Lookback, I picked the 
+\f0\b highest level API
+\f1\b0 , which allows you to go from hardware camera to mpeg 4 file on disk in just a dozen lines of code.\
+\
+AVCaptureSession is the base object here, where you configure inputs and outputs. An AVCaptureDeviceInput will grab video or audio from a hardware device. You could attach the microphone here too to get audio.\
+\
+Finally, AVCaptureMovieFileOutput just takes the incoming video, and writes it to a file on disk. Kick off the session, and the writer, and you're capturing.\
+\
+This works great, but gives you very coarse control. For example, your only controls for 
+\f0\b output format are a dozen presets
+\f1\b0 .\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf2 \
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 If you want to get more fancy, you'll have to get dip down a level of abstraction. There are many ways to do this. AVCaptureSession exposes AVConnections, which can be configured in all kinds of fancy ways. What I needed to do was to adjust the presentation time of each frame. This means I need to access each frame as it comes through the pipeline; to insert a wedge right before the AVCaptureMovieFileOutput if you will. I also wanted to get fine-grained control of the output format, instead of presets.\
+\
+Both of these customizations are available if you start using 
+\f0\b AVAssetWriter
+\f1\b0 . It doesn't fit within an AVCaptureSession, but is a generic media file writer that you have to feed data. Therefore, we configure the AVCaptureSession with a generic 
+\f0\b AVCaptureVideoDataOutput
+\f1\b0  to get raw frames out of the camera. It'll push frames to a queue of our choice with a delegate protocol.\
+\
+Next, we create the asset writer. It takes a settings dictionary, and you can really configure 
+\f2\i everything
+\f1\i0  here. If you wanted detailed control, there you go. To write to it, you need an asset writer input, which you can then feed frames to.\
+\
+Finally, you have to implement the delegate method, do whatever you want to the sample buffers, and then append them to the asset writer's input.\
+\
+This worked for me for years. Finally though, I wanted 
+\f2\i even more control
+\f1\i0 . While it sounds like AVAssetWriter is doing a simple job (writing media files), it's actually doing three complex jobs: video compression, media muxing, and actually writing to disk in an async manner.\
+\
+To decrease our abstractions one more level, we can replace the asset writer with code that does those three steps separately.\
+\
+--------- CORE MEDIA --------\
+\
+Before I can introduce you to any of these interesting things, we need to go through the structures and concepts involved. These are all defined in 
+\f0\b CoreMedia
+\f1\b0 , which is the underlying framework that CoreVideo and others use to represent data in shared formats.\
+\
+
+\f0\b CMSampleBuffer
+\f1\b0  is your friend. It's basically an NSData, plus all the meta-data you could ever wish for to use the data. It can hold either audio or video or muxed data, and the data can be compressed or uncompressed. It can hold a 
+\f2\i bunch
+\f1\i0  of metadata. It comprises:\
+\pard\pardeftab560\pardirnatural\partightenfactor0
+\ls1\ilvl0
+\f3\fs20 \cf2 {\listtext	\uc0\u8226 	}
+\f1\fs24 A 
+\f0\b CMBlockBuffer
+\f1\b0 . This is like a very fancy NSData that has enough complexity to fill itself on demand, and can describe non-linear data (e g planar pixel data, or just a set of non-contiguous byte buffers). For audio, one "frame" is usually about 100ms of audio data, but varies a lot. For video, you usually put a single frame in here, regardless of if it's uncompressed and compressed.\
+\ls1\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 a CMFormatDescriptionRef. This is a polymorphic class that can describe any audio, video or muxed format. We'll deal with it later.\
+\ls1\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 Timing information for the media, as CMTime structures.\
+\pard\pardeftab560\pardirnatural\partightenfactor0
+\ls1\ilvl1
+\f3\fs20 \cf2 {\listtext	\uc0\u8226 	}
+\f1\fs24 A video frame will have the duration that it should be displayed on screen.\
+\ls1\ilvl1
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 An audio sample buffer will have the duration that a single sample should be played for, which is always the inverse of the sample rate, e g 1/44100.\
+\ls1\ilvl1
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 The media will also have a presentation time, which is the playback time of the file at which this particular frame or sample should be played.\
+\ls1\ilvl1
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 Compressed video might also have a "decode time", which is the playback time of the file at which this particular frame should be decoded. This is useful in h264 and others, where compressed frames depend on each other, and might be out of order.\
+\pard\pardeftab560\pardirnatural\partightenfactor0
+\ls1\ilvl0
+\f3\fs20 \cf2 {\listtext	\uc0\u8226 	}
+\f1\fs24 Attachments and other esoterica. For example, some h264 video frames are "key frames", which means they don't depend on any adjacent video frames to be decoded, and are thus the only kind of video frame that you can 
+\f0\b seek to
+\f1\b0 . These are marked with a kCMSampleAttachmentKey_DependsOnOthers attachment set to @NO.\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 \
+Next, let's talk a little bit more about 
+\f0\b CMTime
+\f1\b0 .\
+\pard\pardeftab560\pardirnatural\partightenfactor0
+\ls2\ilvl0
+\f3\fs20 \cf2 {\listtext	\uc0\u8226 	}
+\f1\fs24 It's a struct with a bunch of internals; don't touch them, use the functions and macros.\
+\ls2\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 It's represents a rational number: a value divided by a timescale. For example, 2550 (value) / 1000 (timescale) = 2.55 seconds.\
+\ls2\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 This means it is able to represent time exactly within a given medium, as opposed to floating point numbers. When doing math with two different timescales (e g syncing audio with video), the macros will find the lowest common denominator and give you an exact result.\
+\ls2\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 For audio, the timescale is the sample rate (e g 44100).\
+\ls2\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 For video, MPEG uses timescale 90000 because it divides nicely into most common video framerates.\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 \
+--------- CORE AUDIO --------\
+\
+Okay! Now that we've gotten the basics out of the way, we can talk about audio. In theory, audio is simple. you generally only deal with 
+\f0\b LPCM
+\f1\b0  (Linear PCM) audio. You can think of it as an array of samples, where each sample is a 
+\f0\b position of your speaker element
+\f1\b0  at a given time. -1 would mean the speaker entirely depressed, and 1 entirely extended. The count of such numbers in one second is the "sample rate", which is usually 44100, which then means 44100 movements of the speaker element per second. Audio is generated by vibrating the speaker element. Thus, to generate a 440hz A note for one second, you would generate a sequence of numbers from -1, to 1, to -1 again, 440 times, interpolated over 44100 numbers, and hey presto, it's sound!\
+\
+Of course, computer programmers have found many ways to make this overly complicated.\
+\pard\pardeftab560\pardirnatural\partightenfactor0
+\ls3\ilvl0
+\f3\fs20 \cf2 {\listtext	\uc0\u8226 	}
+\f1\fs24 The sample rate differ all over the place. I recommend keeping to 44100.\
+\ls3\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 the audio can be mono, stereo or other.\
+\ls3\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 stereo samples can be represented either by having all the left samples, then the right samples, or by interleaving them L, R, L, R and so on. I recommend interleaved.\
+\ls3\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 Each sample can be represented by floating point or integers. I recommend floats.\
+\ls3\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 If integer, it can be 8, 16 or 32 bit; and it can be signed or unsigned. I recommend 16bit signed.\
+\ls3\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 Not all bits of this integer might be used for audio\
+\ls3\ilvl0
+\f3\fs20 {\listtext	\uc0\u8226 	}
+\f1\fs24 And so on, and so forth...\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 \
+To play with CoreMedia and create audio CMSampleBuffers, we're going to need a 
+\f0\b CMAudioFormatDescription
+\f1\b0 . This is a subclass of CMFormatDescription, and its main purpose is to carry the 
+\f0\b AudioStreamBasicDescription
+\f1\b0 . This is the shitty structure that CoreAudio uses to describe audio, and because all the audio internals uses it anyway, it's just wrapped here verbatim. Everybody calls it the asbd, because the name is too long. Because it's always impossible to create an ASBD with a correct format without a half-hour reading of the headers plus about twenty trial-and-error tries where the error code is "invalid parameter", here's one working, sane format for uncompressed audio:\
+\
+    double durationInSeconds = 0.1;\
+    int sampleRate = 44100;\
+    int nFrames = sampleRate*durationInSeconds;\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf2     // 16 bit audio per channel. 1 frame = one L sample and one R sample.\
+    int bytesPerFrame = 2 * numChannels; \
+    int blockSize = nFrames*bytesPerFrame;\uc0\u8232     AudioStreamBasicDescription asbd = (AudioStreamBasicDescription)\{\
+        .mSampleRate = sampleRate,\
+        .mFormatID = kAudioFormatLinearPCM,\
+        .mFormatFlags = kLinearPCMFormatFlagIsSignedInteger,\
+        .mBytesPerPacket = bytesPerFrame,\
+        .mFramesPerPacket = 1,\
+        .mBytesPerFrame = bytesPerFrame,\
+        .mChannelsPerFrame = numChannels,\
+        .mBitsPerChannel = 16,\
+        .mReserved = 0,\
+    \};\
+\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 And one for compressed audio:\
+    AudioStreamBasicDescription asbd =(AudioStreamBasicDescription)\{\
+            .mSampleRate =  44100,\
+            .mFormatID = kAudioFormatMPEG4AAC,\
+            .mFormatFlags = 0,\
+            .mBytesPerPacket = 0,\
+            .mFramesPerPacket = 1024,\
+            .mBytesPerFrame = 0,\
+            .mChannelsPerFrame = 1,\
+            .mBitsPerChannel = 0,\
+    \};\
+\
+(yeah, that was a lot easier!)\
+\
+Once you have your format description and a block buffer for your audio data, you can create your CMSampleBuffer, and you can start injecting it into all kinds of fun AVFoundation APIs!\
+\
+I'm not going to go through CoreAudio, audio playback or audio effects. If you want to get started on that topic, I recommend AVAudioEngine, new since iOS 8, which wraps the icky CoreAudio C APIs with Objective-C. It's pretty nice. CoreAudio is also absolutely gorgeous in theory, it's just that the C API is a hell to work with.\
+\
+One thing I 
+\f2\i will
+\f1\i0  go through, because you will invariably encounter it, is to convert audio from one format to another. At some point, you'll want to change the sample rate; or you'll want to convert uncompressed LPCM to compressed AAC audio. Either of these tasks can be accomplished by AudioConverter, a class from AudioToolbox which might be one of the oldest Apple APIs still around, so it's not very straightforward to use.\
+\
+It seems simple enough: you give AudioConverter the ASBD of the 
+\f0\b source format
+\f1\b0 , and the ASBD of the 
+\f0\b destination format
+\f1\b0 ; and then you 
+\f0\b AudioConverterConvertBuffer
+\f1\b0 , giving it output and output buffers. However, that won't work, because especially for PCM-to-AAC conversions, there is a non-linear relationship between the amount of data that goes in, and how much comes out, and it varies constantly. So you need to use 
+\f0\b AudioConverterFillComplexBuffer
+\f1\b0 , but it doesn't take input data: it takes an output buffer, and a callback to fill the input buffer. It's also a blocking call, so the calling thread won't return until the whole output buffer is filled.\
+\
+So what you have to do is to spawn a separate thread, and call the ConvertComplexBuffer on that thread. In the callback, you can wait on a semaphore so that your thread can start filling it with input data. Your app's thread can then provide data and signal the semaphore. It's... involved. Lucky for you, I have a class doing all this for you, so you don't have to. If I haven't released it yet, here's an SO answer explaining the approach: {\field{\*\fldinst{HYPERLINK "https://stackoverflow.com/a/30271187/48125"}}{\fldrslt \cf3 https://stackoverflow.com/a/30271187/48125}}\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf2 \
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 --------- CORE VIDEO --------\
+\
+With that out of the way, let's get to the fun part: video. What is video? It's a series of images played in succession. Just as with audio, we have uncompressed video, and compressed video.\
+\
+You probably deal with 
+\f0\b uncompressed
+\f1\b0  images on a daily basis, in the form of RGBA data. In RGBA, each pixel is represented by four numbers: the red, green, blue and transparency (or alpha). The number might be an 8-bit integer each (which is great for doing image work), or RGB565 where green gets an extra bit since humans see green the best.\
+\
+When working with video, another image format is more common: planar video, also known as YUV, or Y'CbCr or Y'PbPr or 422 or 420. With RGBA, all the image data is in a single 
+\f2\i plane
+\f1\i0 : one data range describes the whole image, because the four different values are interleaved. In planar data, the components are separated into their own regions. In Y'CbCr data, the components are brightness (or luma), blue difference, and red difference; rather than red-green-blue values. The most common format is kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, and it has one luma plane which is basically a gray-scale image, and then one plane at half the resolution which describes the blue and red difference from that luma value, which taken together gives a color image. \
+\
+Another image concept that is unusual outside of video is "
+\f0\b stride
+\f1\b0 ". This means that due to byte alignment, each row of pixels might have some spare bytes at the end that should be skipped over. This means you can't assume that row 2 of pixels start at the byte just after the last pixel of row 1. If you get an image that is skewed diagonally, you have a stride error. If you have Y'CbCr data, the colors will likely be skewed by a different amount than the brightness values. I only mention this because it happens fairly often when dealing with this kind of image data.\
+\
+Ok, so how do we stick this kind of image data into a CMSampleBuffer? You _can_ create a CMBlockBuffer and manage the image data manually, but there are easier ways. In CoreVideo, there is a CVPixelBuffer, which acts as your byte holder for images. It has an abstract superclass called CVImageBuffer, so whenever you see one, you can just cast it to the other, and pretend they're the same.\
+\
+CVPixelBuffer is your glue to other APIs. You can back a CGBitmapContext by a CVPixelBuffer, and hey presto, we're back into territory which you're probably familiar with.\
+\
+One thing you gotta be careful about: uncompressed video is frickin' HUGE! You can't rely on autorelease pools and stuff to manage pixel buffers if you're going to create more than a few. Instead, you use a CVPixelBufferPool. You configure it with the basic details of the pools, and then you can create individual buffers from the pool on demand.\
+\
+Once the buffers' retain counts reach 0 because they're not used by the rest of the video pipeline anymore, they're recycled back to the pool, just like UITableView cell reuse. That way, you don't get a fragmented heap, and you don't run out of memory. I also recommend that you set a max count of buffers on the pool, so that you can use that as back-pressure, in case you are creating too much video and your converter doesn't have time to consume them.\
+\
+Creating a CMSampleBuffer from a CVPixelBuffer is very easy: Use CMVideoFormatDescriptionCreateForImageBuffer to get the pixel buffer's format, and then use CMSampleBufferCreateForImageBuffer together with the format and some timings, and you're good to go.\
+\
+\
+--------- MUXING --------\
+\
+\
+\
+--- AVComposition -------\
+\
+\
+--- VideoToolkit ---\
+\
+--- LBIFFSerializer ---\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf2 \
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 --- LBSampleBufferFileSerialization ---\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+\cf2 \
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf2 --- Memory management and back pressure}
