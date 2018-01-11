@@ -1,5 +1,8 @@
 # LBMediaToolkit
 
+> 2018-01-11
+> Nevyn Bengtsson (nevyn@lookback.io, [@nevyn](https://twitter.com/nevyn))
+
 A toolkit of useful AVFoundation companion classes, and a meetup presentation
 teaching the fundamentals of audio/video programming with Apple frameworks
 (CoreMedia, CoreAudio, CoreVideo, AVFoundation and so on).
