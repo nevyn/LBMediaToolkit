@@ -1,26 +1,25 @@
 //
-//  LBAACEncoder.m
+//  LBAudioConverter.m
 //  StreamTS
 //
 //  Created by nevyn Bengtsson on 13/05/15.
 //  Copyright (c) 2015 nevyn Bengtsson. All rights reserved.
 //
 
-#import "LBAACEncoder.h"
+#import "LBAudioConverter.h"
 #import <AudioToolbox/AudioToolbox.h>
-#import <SPAsync/SPTask.h>
 
-#   define EncoderDebug(...)
-//#	define EncoderDebug(...) GFLog(GFDebug, __VA_ARGS__)
+#   define ConverterDebug(...)
+//#	define ConverterDebug(...) NSLog(__VA_ARGS__)
 
-@interface LBAACEncoderPacket : NSObject
+@interface LBAudioConverterPacket : NSObject
 @property(nonatomic) CMSampleBufferRef sampleBuffer;
 @property(nonatomic,readonly) AudioBufferList *bufferList;
 @property(nonatomic) UInt32 processedByteCount;
 - (UInt32)remainingBytes;
 @end
 
-@interface LBAACEncoder ()
+@interface LBAudioConverter ()
 {
     AudioConverterRef _converter;
     AudioStreamBasicDescription _fromFormat;
@@ -30,7 +29,7 @@
 	BOOL _startOncePred;
 	BOOL _running;
     
-    GFTaskCompletionSource *_stopCompletionSource;
+    void (^_stopCompletionBlock)(void);
 	
 	NSMutableArray *_queuedPackets;
 	NSMutableSet *_packetsToDelete;
@@ -50,13 +49,13 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
                                         AudioStreamPacketDescription**  outDataPacketDescription,
                                         void*                           inUserData)
 {
-    LBAACEncoder *encoder = (__bridge LBAACEncoder*)inUserData;
-    return [encoder fillBuffer:ioData dataPacketCount:ioNumberDataPackets packetDescription:outDataPacketDescription];
+    LBAudioConverter *converter = (__bridge LBAudioConverter*)inUserData;
+    return [converter fillBuffer:ioData dataPacketCount:ioNumberDataPackets packetDescription:outDataPacketDescription];
 }
 
 
-@implementation LBAACEncoder
-- (id)initConvertingTo:(AudioStreamBasicDescription)toFormat
+@implementation LBAudioConverter
+- (instancetype)initConvertingTo:(AudioStreamBasicDescription)toFormat
 {
     if(!(self = [super init]))
         return nil;
@@ -64,14 +63,13 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
     _toFormat = toFormat;
 	_queuedPackets = [NSMutableArray new];
 	_packetsToDelete = [NSMutableSet new];
-	
     
     return self;
 }
 
 - (void)dealloc
 {
-    GFLog(GFDebug, @"Deallocating AAC encoder %@ %p", self, _converter);
+    ConverterDebug(@"Deallocating audio converter %@ %p", self, _converter);
     AudioConverterDispose(_converter);
 }
 
@@ -97,18 +95,17 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
 	_running = YES;
 	
 	_queueSemaphore = [[NSCondition alloc] init];
-	[NSThread detachNewThreadSelector:@selector(_encoderThread) toTarget:self withObject:nil];
+	[NSThread detachNewThreadSelector:@selector(_converterThread) toTarget:self withObject:nil];
 }
 
-- (GFTask *)stopEncoding
+- (void)stopEncoding:(void(^)(void))completion
 {
-    GFLog(GFDebug, @"AAC encoder shutting down: %@", self);
-    LBGuardDescribe(_stopCompletionSource == nil, @"Can't stop encoding twice");
-    if(_stopCompletionSource) {
-        GFLog(GFError, @"AAC Encoder asked to be stopped twice");
-        return _stopCompletionSource.task;
+    ConverterDebug(@"Audio converter asked to stop...");
+    if(_stopCompletionBlock) {
+        NSAssert(NO, @"Audio converter can't be to be stopped twice");
+        return;
     }
-    GFTaskCompletionSource *source = _stopCompletionSource = [GFTaskCompletionSource new];
+    _stopCompletionBlock = completion;
 	
 	// Ensure self lives until the thread has been completely spun donw
 	CFRetain((__bridge CFTypeRef)(self));
@@ -118,27 +115,25 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
         _running = NO;
         [_queueSemaphore broadcast];
     } else {
-        [_stopCompletionSource completeWithValue:nil];
+        completion();
     }
 	[_queueSemaphore unlock];
 	
 	// OK, we're potentially spun down and promise to not access any more ivars.
 	CFRelease((__bridge CFTypeRef)(self));
-
-    return source.task;
 }
 
 - (void)appendSampleBuffer:(CMSampleBufferRef)sampleBuffer
 {
-	EncoderDebug(@"New sample buffer available, broadcasting");
-	LBAACEncoderPacket *packet = [LBAACEncoderPacket new];
+	ConverterDebug(@"New sample buffer available, broadcasting");
+	LBAudioConverterPacket *packet = [LBAudioConverterPacket new];
 	packet.sampleBuffer = sampleBuffer;
 	
 	if(!_startOncePred) {
         _startOncePred = YES;
 		CMAudioFormatDescriptionRef audioDesc = CMSampleBufferGetFormatDescription(sampleBuffer);
 		const AudioStreamBasicDescription *inFormat = CMAudioFormatDescriptionGetStreamBasicDescription(audioDesc);
-		GFLog(GFDebug, @"Starting encoder with source format %@", audioDesc);
+		ConverterDebug(@"Starting converter with source format %@", audioDesc);
 		memcpy(&_fromFormat, inFormat, sizeof(_fromFormat));
 		[self startEncoding];
 	}
@@ -149,10 +144,10 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
 	[_queueSemaphore unlock];
 }
 
-- (void)_encoderThread
+- (void)_converterThread
 {
-    GFLog(GFDebug, @"AAC encoder thread is starting");
-    [NSThread currentThread].name = [NSString stringWithFormat:@"io.lookback.aac.encoder.%p", self];
+    ConverterDebug(@"Audio converter thread is starting");
+    [NSThread currentThread].name = [NSString stringWithFormat:@"io.lookback.audioconverter.%p", self];
 	while(_running) {
 		@autoreleasepool {
 			// Make quarter-second buffers.
@@ -173,7 +168,7 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
                 ioOutputDataPacketSize = bufferSize / outputSizePerPacket;
             }
             
-			EncoderDebug(@"Encoder is doing an iteration of %u output bytes (%u packets)", (unsigned int)bufferSize, (unsigned int)ioOutputDataPacketSize);
+			ConverterDebug(@"Converter is doing an iteration of %u output bytes (%u packets)", (unsigned int)bufferSize, (unsigned int)ioOutputDataPacketSize);
 			
 			_currentPresentationTime = kCMTimeInvalid;
 			const OSStatus conversionResult = AudioConverterFillComplexBuffer(_converter, FillBufferTrampoline, (__bridge void*)self, &ioOutputDataPacketSize, &outAudioBufferList, NULL);
@@ -253,20 +248,20 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
                 com.apple.cmio.buffer_attachment.audio.core_audio_audio_time_stamp(P) = <CFData 0x6000000e6d80 [0x7fff7487fed0]>{length = 64, capacity = 64, bytes = 0x000000d8e2ecac412bfb578d42090000 ... 0300000000000000}
             */
 			
-			EncoderDebug(@"Giving delegate %d output bytes of aac", outAudioBufferList.mBuffers[0].mDataByteSize);
-			[self.delegate encoder:self encodedSampleBuffer:outSampleBuffer trimDurationAtStart:_primingInfo.leadingFrames];
+			ConverterDebug(@"Giving delegate %d output bytes of aac", outAudioBufferList.mBuffers[0].mDataByteSize);
+			[self.delegate converter:self convertedSampleBuffer:outSampleBuffer trimDurationAtStart:_primingInfo.leadingFrames];
 			CFRelease(outSampleBuffer);
 		}
 	}
-    GFLog(GFDebug, @"AAC encoder thread is exiting");
-    [_stopCompletionSource completeWithValue:nil];
+    ConverterDebug(@"Audio conversion thread is exiting");
+    _stopCompletionBlock();
 }
 
 - (OSStatus)fillBuffer:(AudioBufferList*)ioData dataPacketCount:(UInt32*)ioNumberDataPackets packetDescription:(AudioStreamPacketDescription**)outDataPacketDescription
 {
 	UInt32 requestedByteCount = *ioNumberDataPackets * _fromFormat.mBytesPerPacket;
 	UInt32 bytesWrittenSoFar = 0;
-	EncoderDebug(@"Got a request for %d input bytes", requestedByteCount);
+	ConverterDebug(@"Got a request for %d input bytes", requestedByteCount);
 	[_queueSemaphore lock];
 	
 	// The loop ensures we test predicates properly after the semaphore has signalled
@@ -274,20 +269,20 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
 		if(!_running) break;
 		
 		if(_queuedPackets.count == 0) {
-			EncoderDebug(@"Waiting for data");
+			ConverterDebug(@"Waiting for data");
 			[_queueSemaphore wait];
 			continue;
 		}
 		
-		EncoderDebug(@"Data is now available, %ld packets queued", (unsigned long)_queuedPackets.count);
+		ConverterDebug(@"Data is now available, %ld packets queued", (unsigned long)_queuedPackets.count);
 		
 		// Ok, we got data! Just fill in data from a single queued packet.
-		LBAACEncoderPacket *first = [_queuedPackets firstObject];
+		LBAudioConverterPacket *first = [_queuedPackets firstObject];
 		if(CMTIME_IS_INVALID(_currentPresentationTime)) {
 			_currentPresentationTime = CMSampleBufferGetPresentationTimeStamp(first.sampleBuffer);
 			// If we're starting from inside this buffer, advance the presentation time to match.
 			if(first.processedByteCount > 0) {
-				GFLog(GFTrace, @"Bumping presentation time due to fetching in the middle of a buffer");
+				ConverterDebug(@"Bumping presentation time due to fetching in the middle of a buffer");
 				_currentPresentationTime = CMTimeAdd(_currentPresentationTime, CMTimeMake(first.processedByteCount/_fromFormat.mBytesPerPacket, _fromFormat.mSampleRate));
 			}
 		}
@@ -312,14 +307,14 @@ static OSStatus FillBufferTrampoline(AudioConverterRef               inAudioConv
 	
 	// if running is false, this will be 0, indicating EndOfStream
 	*ioNumberDataPackets = bytesWrittenSoFar / _fromFormat.mBytesPerPacket;
-	EncoderDebug(@"Fulfilled request with %d bytes", bytesWrittenSoFar);
+	ConverterDebug(@"Fulfilled request with %d bytes", bytesWrittenSoFar);
 
     return noErr;
 }
 
 @end
 
-@implementation LBAACEncoderPacket
+@implementation LBAudioConverterPacket
 {
 	CMBlockBufferRef _blockBuffer;
 }
