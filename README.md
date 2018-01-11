@@ -6,8 +6,8 @@ teaching the fundamentals of audio/video programming with Apple frameworks
 
 * [Presentation video](https://www.facebook.com/cocoaheadssthlm/videos/1918413685140957/)
   (my presentation starts at 1h21m into the video)
-* [Presentation slides](Presentation/AVMediaToolkit Cocoaheads.pdf)
-* [Presentation notes](Presentation/AVMediaToolkit presentation notes.rtf)
+* [Presentation slides](Presentation/AVMediaToolkit%20Cocoaheads.pdf)
+* [Presentation notes](Presentation/AVMediaToolkit%20presentation%20notes.rtf)
 
 ![](ego.jpg)
 
