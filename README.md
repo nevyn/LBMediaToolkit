@@ -11,12 +11,11 @@ Accompanied by a meetup presentation teaching the fundamentals of audio/video
 programming with Apple frameworks (CoreMedia, CoreAudio, CoreVideo, AVFoundation
 and so on).
 
-* [Presentation video](https://www.facebook.com/cocoaheadssthlm/videos/1918413685140957/)
-  (my presentation starts at 1h21m into the video)
+* [Presentation video](https://www.youtube.com/watch?v=vWbX_GUZY-o) (or [see the whole meetup](https://www.facebook.com/cocoaheadssthlm/videos/1918413685140957/))
 * [Presentation slides](Presentation/AVMediaToolkit%20Cocoaheads.pdf)
 * [Presentation notes](Presentation/AVMediaToolkit%20presentation%20notes.rtf)
 
-![](ego.jpg)
+[![](ego.jpg)](https://www.youtube.com/watch?v=vWbX_GUZY-o)
 
 # Available classes
 
